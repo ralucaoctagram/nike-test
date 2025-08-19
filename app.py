@@ -138,4 +138,45 @@ if zip_file:
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
                                     extracted_text = ""
                                     if os.path.exists(lang_path_full):
-                                        st.image(lang_path
+                                        st.image(lang_path_full, width=200)
+                                        try:
+                                            with open(lang_path_full, "rb") as f:
+                                                lang_image_data = f.read()
+                                            extracted_text = get_ocr_text(lang_image_data, model)
+                                        except Exception as e:
+                                            st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
+                                    else:
+                                        st.warning(f"Fișierul ({lang}) nu a fost găsit.")
+                                
+                                    cols = st.columns(2)
+                                    with cols[0]:
+                                        st.markdown("##### Expected Text (from Excel)")
+                                        st.markdown("---")
+                                        for text in expected_texts_by_lang:
+                                            st.markdown(f"- `{text}`")
+                                    with cols[1]:
+                                        st.markdown("##### Extracted Text (from Banner)")
+                                        st.markdown("---")
+                                        if extracted_text:
+                                            st.write(extracted_text.strip())
+                                        else:
+                                            st.write("N/A")
+
+                                    all_passed = True
+                                    for expected_text in expected_texts_by_lang:
+                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
+                                            all_passed = False
+                                            break
+                                    
+                                    if all_passed:
+                                        st.success("✅ Toate textele corespund!")
+                                    else:
+                                        st.error("❌ Există nepotriviri!")
+
+                                    st.markdown("---")
+                else:
+                    st.info("Te rog să încarci fișierul Excel și să introduci cheia API pentru a începe validarea.")
+            else:
+                st.info("Te rog să introduci numerele de rând pentru toate bannerele EN pentru a activa butonul de validare.")
+        else:
+            st.error("Folderul 'en' (limba engleză) nu a fost găsit în arhivă.")
