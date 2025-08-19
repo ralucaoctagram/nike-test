@@ -14,10 +14,6 @@ st.write(
     "Încarcă arhiva cu bannere și fișierul Excel pentru a valida structura, dimensiunile și traducerile."
 )
 
-# Initialize session state for user inputs
-if 'user_inputs' not in st.session_state:
-    st.session_state.user_inputs = {}
-
 # --- Pasul 1: Încărcare fișiere ---
 api_key = st.text_input("🔑 Introdu Cheia API Gemini:", type="password")
 excel_file = st.file_uploader("📑 Încarcă fișierul Excel cu traducerile", type=["xlsx"])
@@ -29,19 +25,19 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text_blocks(image_data, model):
-    """Extract all distinct blocks of text from an image."""
+def get_ocr_text(image_data, model):
+    """Extracts a single block of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text.split('\n')
-        return []
+            return response.text
+        return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return []
+        return ""
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -98,14 +94,14 @@ if zip_file:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
                     st.stop()
                 
-                # Use session_state to retain inputs
+                user_inputs = {}
                 for relative_path in en_banners:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
                     st.image(en_full_path, width=200)
-                    st.session_state.user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", value=st.session_state.user_inputs.get(relative_path, ""), key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
+                    user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
                 
-                all_inputs_filled = all(input_text.strip() for input_text in st.session_state.user_inputs.values())
+                all_inputs_filled = all(input_text.strip() for input_text in user_inputs.values())
                 if excel_file and api_key and all_inputs_filled:
                     if st.button("🚀 Validează traducerile"):
                         with st.spinner('Validating translations...'):
@@ -121,7 +117,7 @@ if zip_file:
                             for relative_path in en_banners:
                                 st.markdown(f"### Banner: `{relative_path}`")
                                 
-                                row_numbers_str = st.session_state.user_inputs.get(relative_path, "")
+                                row_numbers_str = user_inputs.get(relative_path, "")
                                 
                                 try:
                                     row_indices = [int(n) - 1 for n in row_numbers_str.split(',')]
@@ -133,22 +129,23 @@ if zip_file:
                                 for lang in root_folders:
                                     st.markdown(f"#### Limbă: `{lang}`")
                                     
+                                    # Use the correct column name for the language from the header row (index 0)
                                     lang_col_name = excel_df_raw.iloc[0].get(lang.strip())
                                     expected_texts_by_lang = [str(row.get(lang_col_name, "")).strip() for _, row in en_text_rows.iterrows()]
                                     
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
-                                    extracted_texts_list = []
+                                    extracted_text = ""
                                     if os.path.exists(lang_path_full):
                                         st.image(lang_path_full, width=200)
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_texts_list = get_ocr_text_blocks(lang_image_data, model)
+                                            extracted_text = get_ocr_text(lang_image_data, model)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
                                         st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-                                
+
                                     cols = st.columns(2)
                                     with cols[0]:
                                         st.markdown("##### Expected Text (from Excel)")
@@ -158,16 +155,14 @@ if zip_file:
                                     with cols[1]:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
-                                        if extracted_texts_list:
-                                            for line in extracted_texts_list:
-                                                st.markdown(f"- `{line.strip()}`")
+                                        if extracted_text:
+                                            st.write(extracted_text.strip())
                                         else:
-                                            st.markdown("- N/A")
+                                            st.write("N/A")
 
                                     all_passed = True
-                                    normalized_extracted = [normalize_text(et) for et in extracted_texts_list]
                                     for expected_text in expected_texts_by_lang:
-                                        if normalize_text(expected_text) not in normalized_extracted:
+                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
                                             all_passed = False
                                             break
                                     
