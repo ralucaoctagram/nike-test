@@ -14,6 +14,10 @@ st.write(
     "Încarcă arhiva cu bannere și fișierul Excel pentru a valida structura, dimensiunile și traducerile."
 )
 
+# Initialize session state for user inputs
+if 'user_inputs' not in st.session_state:
+    st.session_state.user_inputs = {}
+
 # --- Pasul 1: Încărcare fișiere ---
 api_key = st.text_input("🔑 Introdu Cheia API Gemini:", type="password")
 excel_file = st.file_uploader("📑 Încarcă fișierul Excel cu traducerile", type=["xlsx"])
@@ -94,14 +98,13 @@ if zip_file:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
                     st.stop()
                 
-                user_inputs = {}
                 for relative_path in en_banners:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
                     st.image(en_full_path, width=200)
-                    user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
+                    st.session_state.user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", value=st.session_state.user_inputs.get(relative_path, ""), key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
                 
-                all_inputs_filled = all(input_text.strip() for input_text in user_inputs.values())
+                all_inputs_filled = all(input_text.strip() for input_text in st.session_state.user_inputs.values())
                 if excel_file and api_key and all_inputs_filled:
                     if st.button("🚀 Validează traducerile"):
                         with st.spinner('Validating translations...'):
@@ -117,7 +120,7 @@ if zip_file:
                             for relative_path in en_banners:
                                 st.markdown(f"### Banner: `{relative_path}`")
                                 
-                                row_numbers_str = user_inputs.get(relative_path, "")
+                                row_numbers_str = st.session_state.user_inputs.get(relative_path, "")
                                 
                                 try:
                                     row_indices = [int(n) - 1 for n in row_numbers_str.split(',')]
@@ -135,45 +138,4 @@ if zip_file:
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
                                     extracted_text = ""
                                     if os.path.exists(lang_path_full):
-                                        st.image(lang_path_full, width=200)
-                                        try:
-                                            with open(lang_path_full, "rb") as f:
-                                                lang_image_data = f.read()
-                                            extracted_text = get_ocr_text(lang_image_data, model)
-                                        except Exception as e:
-                                            st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
-                                    else:
-                                        st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-                                
-                                    cols = st.columns(2)
-                                    with cols[0]:
-                                        st.markdown("##### Expected Text (from Excel)")
-                                        st.markdown("---")
-                                        for text in expected_texts_by_lang:
-                                            st.markdown(f"- `{text}`")
-                                    with cols[1]:
-                                        st.markdown("##### Extracted Text (from Banner)")
-                                        st.markdown("---")
-                                        if extracted_text:
-                                            st.write(extracted_text.strip())
-                                        else:
-                                            st.write("N/A")
-
-                                    all_passed = True
-                                    for expected_text in expected_texts_by_lang:
-                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
-                                            all_passed = False
-                                            break
-                                    
-                                    if all_passed:
-                                        st.success("✅ Toate textele corespund!")
-                                    else:
-                                        st.error("❌ Există nepotriviri!")
-
-                                    st.markdown("---")
-                else:
-                    st.info("Te rog să încarci fișierul Excel și să introduci cheia API pentru a începe validarea.")
-            else:
-                st.info("Te rog să introduci numerele de rând pentru toate bannerele EN pentru a activa butonul de validare.")
-        else:
-            st.error("Folderul 'en' (limba engleză) nu a fost găsit în arhivă.")
+                                        st.image(lang_path
