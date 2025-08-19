@@ -25,7 +25,7 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text(image_data, model):
+def get_ocr_text_blocks(image_data, model):
     """Extract a single block of text from an image."""
     try:
         response = model.generate_content([
@@ -33,11 +33,11 @@ def get_ocr_text(image_data, model):
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text
-        return ""
+            return response.text.split('\n')
+        return []
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return ""
+        return []
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -87,7 +87,9 @@ if zip_file:
                 try:
                     excel_df = pd.read_excel(excel_file, header=0, dtype=str).fillna('')
                     st.write("### Preview Excel (rândurile sunt numerotate de la 1)")
-                    st.dataframe(excel_df.reset_index(names='Linia').rename(columns={'index': 'Linia'}))
+                    df_display = excel_df.copy()
+                    df_display.index += 2
+                    st.dataframe(df_display.reset_index().rename(columns={'index': 'Linia'}))
                 except Exception as e:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
                     st.stop()
@@ -99,7 +101,6 @@ if zip_file:
                     st.image(en_full_path, width=200)
                     user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
                 
-                # Afișează butonul doar dacă toate câmpurile sunt completate
                 all_inputs_filled = all(input_text.strip() for input_text in user_inputs.values())
                 if excel_file and api_key and all_inputs_filled:
                     if st.button("🚀 Validează traducerile"):
