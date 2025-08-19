@@ -31,8 +31,6 @@ if zip_file:
             zip_ref.extractall(temp_dir)
             st.success("✅ Arhiva a fost dezarhivată.")
 
-        # Obținerea tuturor folderelor de la rădăcină (coduri de limbă)
-        # Ignoră folderele __MACOSX
         root_folders = [f.name for f in os.scandir(temp_dir) if f.is_dir() and f.name != '__MACOSX']
         
         en_path = None
@@ -42,10 +40,8 @@ if zip_file:
                 break
         
         if en_path:
-            # Găsirea tuturor bannerelor din folderul 'en' ca sursă de adevăr
             en_banners = []
             for root, dirs, files in os.walk(en_path):
-                # Omiterea directorului __MACOSX
                 if '__MACOSX' in dirs:
                     dirs.remove('__MACOSX')
                 
@@ -69,42 +65,44 @@ if zip_file:
             # --- Validarea Dimensiunilor Bannerelor ---
             st.subheader("🖼️ Validare Dimensiuni Bannere")
             size_results = []
+            
+            # Obținem dimensiunile reale ale bannerelor EN pentru referință
+            en_banner_sizes = {}
             for relative_path in en_banners:
                 en_file_path = os.path.join(en_path, relative_path)
-                
                 try:
                     with Image.open(en_file_path) as img:
-                        width, height = img.size
+                        en_banner_sizes[relative_path] = img.size
                 except Exception as e:
-                    width, height = "Eroare", "Eroare"
+                    en_banner_sizes[relative_path] = ("Eroare", "Eroare")
 
-                match = re.search(r"(\d+)x(\d+)", relative_path)
-                if match:
-                    declared_w_1x, declared_h_1x = int(match.group(1)), int(match.group(2))
-                    expected_w_2x, expected_h_2x = declared_w_1x * 2, declared_h_1x * 2
-                    
-                    status = ""
-                    if width == expected_w_2x and height == expected_h_2x:
-                        status = "✅ Dimensiune corectă (2x)"
-                    else:
-                        status = "❌ Dimensiune incorectă"
-                    
-                    size_results.append({
-                        "Cale Banner": relative_path,
-                        "Dimensiune Declarată (1x)": f"{declared_w_1x}x{declared_h_1x}",
-                        "Dimensiune Așteptată (2x)": f"{expected_w_2x}x{expected_h_2x}",
-                        "Dimensiune Reală": f"{width}x{height}",
-                        "Status": status
-                    })
-                else:
-                    size_results.append({
-                        "Cale Banner": relative_path,
-                        "Dimensiune Declarată (1x)": "N/A",
-                        "Dimensiune Așteptată (2x)": "N/A",
-                        "Dimensiune Reală": f"{width}x{height}",
-                        "Status": "⚠️ Dimensiune nedeclarată în nume"
-                    })
+            # Verificăm fiecare banner din fiecare limbă
+            for relative_path in en_banners:
+                expected_size = en_banner_sizes.get(relative_path)
+                if expected_size:
+                    for lang in root_folders:
+                        full_path = os.path.join(temp_dir, lang, relative_path)
+                        if os.path.exists(full_path):
+                            try:
+                                with Image.open(full_path) as img:
+                                    actual_size = img.size
+                            except Exception:
+                                actual_size = ("Eroare", "Eroare")
 
+                            match = re.search(r"(\d+)x(\d+)", relative_path)
+                            declared_size_1x = f"{match.group(1)}x{match.group(2)}" if match else "N/A"
+                            
+                            status = "✅ Dimensiune corectă" if actual_size == expected_size else "❌ Dimensiune incorectă"
+                            
+                            size_results.append({
+                                "Limbă": lang,
+                                "Cale Banner": relative_path,
+                                "Dimensiune Declarată (1x)": declared_size_1x,
+                                "Dimensiune Așteptată": f"{expected_size[0]}x{expected_size[1]}",
+                                "Dimensiune Reală": f"{actual_size[0]}x{actual_size[1]}",
+                                "Status": status
+                            })
+            
             df_sizes = pd.DataFrame(size_results)
             st.dataframe(df_sizes)
 
