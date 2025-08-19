@@ -23,21 +23,22 @@ def normalize_text(text):
     """Normalize text for a more flexible comparison."""
     if not isinstance(text, str):
         return ""
+    # Normalize by converting to lowercase and removing extra spaces/newlines
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text_blocks(image_data, model):
-    """Extract all distinct blocks of text from an image."""
+    """Extract a single block of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text.split('\n')
-        return []
+            return response.text
+        return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return []
+        return ""
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -94,6 +95,14 @@ if zip_file:
                         try:
                             xl = pd.ExcelFile(excel_file)
                             sheets_df = {sheet: xl.parse(sheet, dtype=str).fillna('') for sheet in xl.sheet_names}
+                            
+                            # Normalize all Excel texts and store them for token-based matching
+                            all_excel_texts = {}
+                            for df in sheets_df.values():
+                                for _, row in df.iterrows():
+                                    for col, cell in row.items():
+                                        if cell:
+                                            all_excel_texts[normalize_text(cell)] = row
                         except Exception as e:
                             st.error(f"Eroare la citirea fișierului Excel: {e}")
                             st.stop()
@@ -108,71 +117,69 @@ if zip_file:
                             try:
                                 with open(en_path_full, "rb") as f:
                                     en_image_data = f.read()
-                                en_ocr_text_blocks = get_ocr_text_blocks(en_image_data, model)
+                                en_ocr_text = get_ocr_text_blocks(en_image_data, model)
                             except Exception as e:
-                                en_ocr_text_blocks = []
+                                en_ocr_text = ""
                                 st.warning(f"Eroare OCR pentru {relative_path} (EN): {e}")
 
-                            if not en_ocr_text_blocks:
+                            if not en_ocr_text:
                                 st.warning(f"Niciun text nu a putut fi extras din bannerul EN ({relative_path}).")
                                 continue
                             
-                            # Caută fiecare text EN extras în Excel pentru a stabili rândurile corespondente
-                            en_text_to_row = {}
-                            for text_block in en_ocr_text_blocks:
-                                normalized_text = normalize_text(text_block)
-                                for df in sheets_df.values():
-                                    for _, row in df.iterrows():
-                                        for cell in row.values:
-                                            if normalized_text in normalize_text(str(cell)):
-                                                en_text_to_row[text_block] = row
-                                                break
-                                        if text_block in en_text_to_row:
-                                            break
-                                if text_block in en_text_to_row:
-                                    continue
+                            # Caută cea mai bună potrivire pe baza cuvintelor comune
+                            best_match_rows = {}
+                            en_ocr_tokens = set(normalize_text(en_ocr_text).split())
                             
-                            if not en_text_to_row:
-                                st.warning(f"Niciun text din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
+                            for normalized_text, row in all_excel_texts.items():
+                                excel_tokens = set(normalized_text.split())
+                                common_tokens = en_ocr_tokens.intersection(excel_tokens)
+                                
+                                # Scoring based on number of matching tokens
+                                if len(common_tokens) > 0:
+                                    if row.name not in [r.name for r in best_match_rows.values()]:
+                                        best_match_rows[len(common_tokens)] = row
+                            
+                            if not best_match_rows:
+                                st.warning(f"Textul din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
                                 continue
 
+                            # Generează un raport pentru fiecare limbă
                             for lang in root_folders:
                                 st.markdown(f"#### Limbă: `{lang}`")
                                 
-                                expected_texts = [str(row.get(lang.strip(), "")).strip() for row in en_text_to_row.values()]
+                                # Colectează textele așteptate din rândurile identificate
+                                expected_texts_by_lang = [str(row.get(lang.strip(), "")).strip() for row in best_match_rows.values()]
                                 
                                 lang_path_full = os.path.join(temp_dir, lang, relative_path)
-                                extracted_texts_list = []
+                                extracted_text = ""
                                 if os.path.exists(lang_path_full):
                                     try:
                                         with open(lang_path_full, "rb") as f:
                                             lang_image_data = f.read()
-                                        extracted_texts_list = get_ocr_text_blocks(lang_image_data, model)
+                                        extracted_text = get_ocr_text_blocks(lang_image_data, model)
                                     except Exception as e:
                                         st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                 else:
                                     st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-                                
+
                                 cols = st.columns(2)
                                 with cols[0]:
                                     st.markdown("##### Expected Text")
                                     st.markdown("---")
-                                    for text in expected_texts:
+                                    for text in expected_texts_by_lang:
                                         st.markdown(f"- `{text}`")
                                 with cols[1]:
                                     st.markdown("##### Extracted Text")
                                     st.markdown("---")
-                                    if extracted_texts_list:
-                                        for line in extracted_texts_list:
-                                            st.markdown(f"- `{line.strip()}`")
+                                    if extracted_text:
+                                        st.markdown(f"- `{extracted_text.strip()}`")
                                     else:
                                         st.markdown("- N/A")
 
                                 # Verificare logică
                                 all_passed = True
-                                normalized_extracted = [normalize_text(et) for et in extracted_texts_list]
-                                for expected_text in expected_texts:
-                                    if normalize_text(expected_text) not in normalized_extracted:
+                                for expected_text in expected_texts_by_lang:
+                                    if normalize_text(expected_text) not in normalize_text(extracted_text):
                                         all_passed = False
                                         break
                                 
