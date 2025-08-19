@@ -23,6 +23,7 @@ def normalize_text(text):
     """Normalize text for a more flexible comparison."""
     if not isinstance(text, str):
         return ""
+    # Replaces newlines and extra spaces with a single space
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text(image_data, model):
@@ -161,7 +162,8 @@ if zip_file:
                                     st.markdown("##### Extracted Text")
                                     st.markdown("---")
                                     if extracted_text:
-                                        st.markdown(f"- `{extracted_text.strip()}`")
+                                        # Uniformizează afișarea textului extras
+                                        st.markdown(f"- `{re.sub(r'\\n', ' ', extracted_text).strip()}`")
                                     else:
                                         st.markdown("- N/A")
 
