@@ -26,7 +26,7 @@ def normalize_text(text):
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text_blocks(image_data, model):
-    """Extract a single block of text from an image."""
+    """Extract all distinct blocks of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
@@ -155,27 +155,4 @@ if zip_file:
                                     with cols[1]:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
-                                        if extracted_text:
-                                            st.write(extracted_text.strip())
-                                        else:
-                                            st.write("N/A")
-
-                                    all_passed = True
-                                    normalized_extracted = normalize_text(extracted_text)
-                                    for expected_text in expected_texts_by_lang:
-                                        if normalize_text(expected_text) not in normalized_extracted:
-                                            all_passed = False
-                                            break
-                                    
-                                    if all_passed:
-                                        st.success("✅ Toate textele corespund!")
-                                    else:
-                                        st.error("❌ Există nepotriviri!")
-
-                                    st.markdown("---")
-                else:
-                    st.info("Te rog să încarci fișierul Excel și să introduci cheia API pentru a începe validarea.")
-            else:
-                st.info("Te rog să introduci numerele de rând pentru toate bannerele EN pentru a activa butonul de validare.")
-        else:
-            st.error("Folderul 'en' (limba engleză) nu a fost găsit în arhivă.")
+                                        if extracted_text
