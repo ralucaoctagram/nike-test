@@ -25,19 +25,19 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text_blocks(image_data, model):
-    """Extract a single block of text from an image."""
+def get_ocr_text(image_data, model):
+    """Extracts a single block of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text.split('\n')
-        return []
+            return response.text
+        return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return []
+        return ""
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -85,10 +85,10 @@ if zip_file:
                 st.info("Te rog să introduci numerele de rând din Excel care corespund textelor de pe fiecare banner EN.")
                 
                 try:
-                    excel_df = pd.read_excel(excel_file, header=0, dtype=str).fillna('')
+                    excel_df_raw = pd.read_excel(excel_file, header=None, dtype=str).fillna('')
                     st.write("### Preview Excel (rândurile sunt numerotate de la 1)")
-                    df_display = excel_df.copy()
-                    df_display.index += 2
+                    df_display = excel_df_raw.copy()
+                    df_display.index += 1
                     st.dataframe(df_display.reset_index().rename(columns={'index': 'Linia'}))
                 except Exception as e:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
@@ -120,8 +120,8 @@ if zip_file:
                                 row_numbers_str = user_inputs.get(relative_path, "")
                                 
                                 try:
-                                    row_indices = [int(n) - 2 for n in row_numbers_str.split(',')]
-                                    en_text_rows = excel_df.iloc[row_indices]
+                                    row_indices = [int(n) - 1 for n in row_numbers_str.split(',')]
+                                    en_text_rows = excel_df_raw.iloc[row_indices]
                                 except Exception as e:
                                     st.error(f"Eroare la citirea rândurilor din Excel: {e}")
                                     continue
@@ -129,7 +129,9 @@ if zip_file:
                                 for lang in root_folders:
                                     st.markdown(f"#### Limbă: `{lang}`")
                                     
-                                    expected_texts_by_lang = [str(row.get(lang.strip(), "")).strip() for _, row in en_text_rows.iterrows()]
+                                    # Get the header from the first row for the correct column name
+                                    lang_col_name = excel_df_raw.iloc[0].get(excel_df_raw.columns[root_folders.index(lang)])
+                                    expected_texts_by_lang = [str(row.get(excel_df_raw.columns[root_folders.index(lang)], "")).strip() for _, row in en_text_rows.iterrows()]
                                     
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
                                     extracted_text = ""
