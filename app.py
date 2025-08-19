@@ -7,7 +7,6 @@ from io import BytesIO
 import re
 import tempfile
 import google.generativeai as genai
-from google.cloud import vision
 
 st.set_page_config(page_title="Banner Validator", layout="wide")
 st.title("📊 Banner Validator")
@@ -26,45 +25,21 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text_with_grouping(image_data, api_key):
-    """Extracts text from an image and groups it intelligently."""
+def get_ocr_text_blocks(image_data, api_key):
+    """Extract all distinct blocks of text from an image."""
     try:
-        # Use Google Cloud Vision API for richer data
-        client = vision.ImageAnnotatorClient.from_service_account_json(api_key)
-        image = vision.Image(content=image_data)
-        response = client.text_detection(image=image)
-        
-        # Get all text annotations (words)
-        annotations = response.text_annotations
-        if not annotations:
-            return ""
-
-        # Group words into lines
-        lines = {}
-        for annotation in annotations[1:]: # Skip the first full text annotation
-            bounds = annotation.bounding_poly.vertices
-            y_mid = (bounds[0].y + bounds[2].y) / 2
-            
-            found_line = False
-            for line_y, line_words in lines.items():
-                # Check if the word belongs to an existing line
-                if abs(line_y - y_mid) < 5: # Threshold for same line
-                    line_words.append(annotation.description)
-                    found_line = True
-                    break
-            
-            if not found_line:
-                lines[y_mid] = [annotation.description]
-
-        # Join words in each line
-        grouped_lines = []
-        for y in sorted(lines.keys()):
-            grouped_lines.append(" ".join(lines[y]))
-        
-        return "\n".join(grouped_lines)
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = model.generate_content([
+            "Extract all text from the image, preserving the original line breaks.",
+            {"mime_type": "image/jpeg", "data": image_data}
+        ])
+        if response.text:
+            return response.text.split('\n')
+        return []
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return ""
+        return []
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -132,13 +107,6 @@ if zip_file:
                 if excel_file and api_key and all_inputs_filled:
                     if st.button("🚀 Validează traducerile"):
                         with st.spinner('Validating translations...'):
-                            try:
-                                # Use Google Cloud Vision API for richer data
-                                client = vision.ImageAnnotatorClient.from_service_account_json(api_key)
-                            except Exception as e:
-                                st.error(f"Eroare la configurarea Gemini API: {e}. Verifică cheia API.")
-                                st.stop()
-
                             st.subheader("🔍 Raport Detaliat de Validare a Traducerilor")
                             
                             for relative_path in en_banners:
@@ -161,18 +129,18 @@ if zip_file:
                                     expected_texts_by_lang = [str(row.get(lang_col_name, "")).strip() for _, row in en_text_rows.iterrows()]
                                     
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
-                                    extracted_text = ""
+                                    extracted_texts_list = []
                                     if os.path.exists(lang_path_full):
                                         st.image(lang_path_full, width=200)
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_text = get_ocr_text_with_grouping(lang_image_data, api_key)
+                                            extracted_texts_list = get_ocr_text_blocks(lang_image_data, api_key)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
                                         st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-
+                                
                                     cols = st.columns(2)
                                     with cols[0]:
                                         st.markdown("##### Expected Text (from Excel)")
@@ -182,14 +150,16 @@ if zip_file:
                                     with cols[1]:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
-                                        if extracted_text:
-                                            st.write(extracted_text.strip())
+                                        if extracted_texts_list:
+                                            for line in extracted_texts_list:
+                                                st.markdown(f"- `{line.strip()}`")
                                         else:
-                                            st.write("N/A")
+                                            st.markdown("- N/A")
 
                                     all_passed = True
+                                    normalized_extracted = [normalize_text(et) for et in extracted_texts_list]
                                     for expected_text in expected_texts_by_lang:
-                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
+                                        if normalize_text(expected_text) not in normalized_extracted:
                                             all_passed = False
                                             break
                                     
