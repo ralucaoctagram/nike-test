@@ -20,20 +20,21 @@ excel_file = st.file_uploader("📑 Încarcă fișierul Excel cu traducerile", t
 zip_file = st.file_uploader("🗂️ Încarcă arhiva cu bannere (ZIP)", type=["zip"])
 
 def normalize_text(text):
-    """Normalize text for fuzzy comparison."""
+    """Normalize text for a more flexible comparison."""
     if not isinstance(text, str):
         return ""
+    # Remove extra spaces and newlines, then convert to lowercase
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text_blocks(image_data, model):
     """Extract all text blocks from an image."""
     try:
         response = model.generate_content([
-            "Extract all text from the image, preserving the original line breaks.",
+            "Extract each distinct block of text from the image, separated by a newline.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         
-        # Split text by newlines to get individual text blocks
+        # Split text by newlines and filter out empty strings
         if response.text:
             return [t.strip() for t in response.text.split('\n') if t.strip()]
         return []
@@ -60,6 +61,7 @@ if zip_file:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                         en_banners.append(os.path.relpath(os.path.join(root, file), en_path))
             
+            # --- Validare Structură și Dimensiuni ---
             st.subheader("📁 Validare Structură Foldere și Fișiere")
             validation_data = {banner: {lang: "✅ Găsit" if os.path.exists(os.path.join(temp_dir, lang, banner)) else "❌ Lipsește" for lang in root_folders} for banner in en_banners}
             st.dataframe(pd.DataFrame(validation_data).T)
@@ -111,17 +113,19 @@ if zip_file:
 
                             if not en_text_blocks: continue
                             
-                            # Find all matching rows in Excel for all EN text blocks
-                            matching_rows = []
+                            # Find matching rows in Excel for all EN text blocks
+                            en_text_to_row = {}
                             for text_block in en_text_blocks:
                                 normalized_text = normalize_text(text_block)
                                 for df in sheets_df.values():
                                     for _, row in df.iterrows():
-                                        if any(normalized_text in normalize_text(cell) for cell in row):
-                                            matching_rows.append(row)
+                                        if any(normalized_text in normalize_text(str(cell)) for cell in row):
+                                            en_text_to_row[text_block] = row
                                             break
+                                    if text_block in en_text_to_row:
+                                        break
                             
-                            if not matching_rows:
+                            if not en_text_to_row:
                                 st.warning(f"Niciun text din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
                                 continue
 
@@ -133,23 +137,23 @@ if zip_file:
                                             lang_image_data = f.read()
                                         lang_text_blocks = get_ocr_text_blocks(lang_image_data, model)
                                     except Exception as e:
-                                        lang_text_blocks = None
+                                        lang_text_blocks = []
+                                        st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     
-                                    for row in matching_rows:
+                                    # Create a mapping of extracted text to check against
+                                    extracted_text_map = {normalize_text(t): t for t in lang_text_blocks}
+                                    
+                                    for en_text, row in en_text_to_row.items():
                                         expected_text = str(row.get(lang.strip(), "")).strip()
                                         normalized_expected_text = normalize_text(expected_text)
                                         
                                         status = "❌ FAIL"
                                         extracted_text_match = "N/A"
                                         
-                                        if lang_text_blocks:
-                                            for text_block in lang_text_blocks:
-                                                normalized_extracted_text = normalize_text(text_block)
-                                                if normalized_extracted_text == normalized_expected_text:
-                                                    status = "✅ PASS"
-                                                    extracted_text_match = text_block
-                                                    break
-                                            
+                                        if normalized_expected_text in extracted_text_map:
+                                            status = "✅ PASS"
+                                            extracted_text_match = extracted_text_map[normalized_expected_text]
+                                        
                                         translation_results.append({
                                             "Banner": relative_path,
                                             "Language": lang,
@@ -157,7 +161,7 @@ if zip_file:
                                             "Extracted Text": extracted_text_match,
                                             "Status": status
                                         })
-
+                    
                     st.success("✅ Verificare completă!")
                     if translation_results: st.dataframe(pd.DataFrame(translation_results))
                     else: st.info("Niciun banner nu a putut fi verificat.")
