@@ -19,14 +19,24 @@ api_key = st.text_input("🔑 Introdu Cheia API Gemini:", type="password")
 excel_file = st.file_uploader("📑 Încarcă fișierul Excel cu traducerile", type=["xlsx"])
 zip_file = st.file_uploader("🗂️ Încarcă arhiva cu bannere (ZIP)", type=["zip"])
 
-def perform_ocr(image_data, model):
-    """Performs OCR on an image using the Gemini API."""
+def normalize_text(text):
+    """Normalize text for fuzzy comparison."""
+    if not isinstance(text, str):
+        return ""
+    return re.sub(r'\s+', ' ', text).strip().lower()
+
+def get_ocr_text_blocks(image_data, model):
+    """Extract all text blocks from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
-        return response.text
+        
+        # Split text by newlines to get individual text blocks
+        if response.text:
+            return [t.strip() for t in response.text.split('\n') if t.strip()]
+        return []
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
         return None
@@ -50,7 +60,6 @@ if zip_file:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                         en_banners.append(os.path.relpath(os.path.join(root, file), en_path))
             
-            # --- Validare Structură și Dimensiuni ---
             st.subheader("📁 Validare Structură Foldere și Fișiere")
             validation_data = {banner: {lang: "✅ Găsit" if os.path.exists(os.path.join(temp_dir, lang, banner)) else "❌ Lipsește" for lang in root_folders} for banner in en_banners}
             st.dataframe(pd.DataFrame(validation_data).T)
@@ -70,7 +79,7 @@ if zip_file:
                         declared_size_1x = f"{match.group(1)}x{match.group(2)}" if match else "N/A"
                         size_results.append({"Limbă": lang, "Cale Banner": relative_path, "Dimensiune Declarată (1x)": declared_size_1x, "Dimensiune Așteptată": f"{expected_size[0]}x{expected_size[1]}", "Dimensiune Reală": f"{actual_size[0]}x{actual_size[1]}", "Status": status})
             st.dataframe(pd.DataFrame(size_results))
-
+            
             # --- Pasul 4: Validare Traduceri (cu buton) ---
             st.markdown("---")
             st.subheader("⚡ Validare Traduceri cu Gemini API")
@@ -95,26 +104,25 @@ if zip_file:
                             try:
                                 with open(en_path_full, "rb") as f:
                                     en_image_data = f.read()
-                                en_text_extracted = perform_ocr(en_image_data, model)
+                                en_text_blocks = get_ocr_text_blocks(en_image_data, model)
                             except Exception as e:
-                                en_text_extracted = None
+                                en_text_blocks = None
                                 st.warning(f"Eroare OCR pentru {relative_path} (EN): {e}")
 
-                            if not en_text_extracted: continue
+                            if not en_text_blocks: continue
                             
-                            # Normalizăm textul extras și textul din Excel
-                            normalized_en_text = en_text_extracted.replace('\n', ' ').strip()
+                            # Find all matching rows in Excel for all EN text blocks
+                            matching_rows = []
+                            for text_block in en_text_blocks:
+                                normalized_text = normalize_text(text_block)
+                                for df in sheets_df.values():
+                                    for _, row in df.iterrows():
+                                        if any(normalized_text in normalize_text(cell) for cell in row):
+                                            matching_rows.append(row)
+                                            break
                             
-                            expected_row = None
-                            for df in sheets_df.values():
-                                for _, row in df.iterrows():
-                                    if any(normalized_en_text in str(cell).replace('\n', ' ').strip() for cell in row):
-                                        expected_row = row
-                                        break
-                                if expected_row is not None: break
-
-                            if expected_row is None:
-                                st.warning(f"Textul '{en_text_extracted.strip()}' din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
+                            if not matching_rows:
+                                st.warning(f"Niciun text din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
                                 continue
 
                             for lang in root_folders:
@@ -123,18 +131,36 @@ if zip_file:
                                     try:
                                         with open(lang_path_full, "rb") as f:
                                             lang_image_data = f.read()
-                                        lang_text_extracted = perform_ocr(lang_image_data, model)
+                                        lang_text_blocks = get_ocr_text_blocks(lang_image_data, model)
                                     except Exception as e:
-                                        lang_text_extracted = None
+                                        lang_text_blocks = None
                                     
-                                    expected_text = str(expected_row.get(lang.strip(), "")).strip().replace('\n', ' ')
-                                    
-                                    status = "✅ PASS" if lang_text_extracted and lang_text_extracted.replace('\n', ' ').strip() == expected_text else "❌ FAIL"
-                                    translation_results.append({"Banner": relative_path, "Language": lang, "Expected Text": expected_text, "Extracted Text": lang_text_extracted, "Status": status})
-                        
-                        st.success("✅ Verificare completă!")
-                        if translation_results: st.dataframe(pd.DataFrame(translation_results))
-                        else: st.info("Niciun banner nu a putut fi verificat.")
+                                    for row in matching_rows:
+                                        expected_text = str(row.get(lang.strip(), "")).strip()
+                                        normalized_expected_text = normalize_text(expected_text)
+                                        
+                                        status = "❌ FAIL"
+                                        extracted_text_match = "N/A"
+                                        
+                                        if lang_text_blocks:
+                                            for text_block in lang_text_blocks:
+                                                normalized_extracted_text = normalize_text(text_block)
+                                                if normalized_extracted_text == normalized_expected_text:
+                                                    status = "✅ PASS"
+                                                    extracted_text_match = text_block
+                                                    break
+                                            
+                                        translation_results.append({
+                                            "Banner": relative_path,
+                                            "Language": lang,
+                                            "Expected Text": expected_text,
+                                            "Extracted Text": extracted_text_match,
+                                            "Status": status
+                                        })
+
+                    st.success("✅ Verificare completă!")
+                    if translation_results: st.dataframe(pd.DataFrame(translation_results))
+                    else: st.info("Niciun banner nu a putut fi verificat.")
             else:
                 st.info("Apasă pe butonul de mai jos pentru a începe validarea traducerilor.")
         else:
