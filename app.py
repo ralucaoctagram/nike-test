@@ -140,12 +140,12 @@ if zip_file:
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_text = get_ocr_text_blocks(lang_image_data, model)
+                                            extracted_text = get_ocr_text(lang_image_data, model)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
                                         st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-                                
+
                                     cols = st.columns(2)
                                     with cols[0]:
                                         st.markdown("##### Expected Text (from Excel)")
@@ -156,15 +156,13 @@ if zip_file:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
                                         if extracted_text:
-                                            for line in extracted_text:
-                                                st.markdown(f"- `{line.strip()}`")
+                                            st.write(extracted_text.strip())
                                         else:
-                                            st.markdown("- N/A")
+                                            st.write("N/A")
 
                                     all_passed = True
-                                    normalized_extracted = [normalize_text(et) for et in extracted_text]
                                     for expected_text in expected_texts_by_lang:
-                                        if normalize_text(expected_text) not in normalized_extracted:
+                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
                                             all_passed = False
                                             break
                                     
