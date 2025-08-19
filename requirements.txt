@@ -1,5 +1,6 @@
 streamlit
 pandas
-pillow
+Pillow
 openpyxl
 google-generativeai
+google-cloud-vision
