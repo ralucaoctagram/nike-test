@@ -129,9 +129,9 @@ if zip_file:
                                 for lang in root_folders:
                                     st.markdown(f"#### Limbă: `{lang}`")
                                     
-                                    # Get the header from the first row for the correct column name
-                                    lang_col_name = excel_df_raw.iloc[0].get(excel_df_raw.columns[root_folders.index(lang)])
-                                    expected_texts_by_lang = [str(row.get(excel_df_raw.columns[root_folders.index(lang)], "")).strip() for _, row in en_text_rows.iterrows()]
+                                    # Use the correct column name for the language from the header row (index 0)
+                                    lang_col_name = excel_df_raw.iloc[0].get(lang.strip())
+                                    expected_texts_by_lang = [str(row.get(lang_col_name, "")).strip() for _, row in en_text_rows.iterrows()]
                                     
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
                                     extracted_text = ""
@@ -140,12 +140,12 @@ if zip_file:
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_text = get_ocr_text(lang_image_data, model)
+                                            extracted_text = get_ocr_text_blocks(lang_image_data, model)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
                                         st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-
+                                
                                     cols = st.columns(2)
                                     with cols[0]:
                                         st.markdown("##### Expected Text (from Excel)")
@@ -156,12 +156,13 @@ if zip_file:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
                                         if extracted_text:
-                                            st.write(extracted_text.strip())
+                                            for line in extracted_text:
+                                                st.markdown(f"- `{line.strip()}`")
                                         else:
-                                            st.write("N/A")
+                                            st.markdown("- N/A")
 
                                     all_passed = True
-                                    normalized_extracted = normalize_text(extracted_text)
+                                    normalized_extracted = [normalize_text(et) for et in extracted_text]
                                     for expected_text in expected_texts_by_lang:
                                         if normalize_text(expected_text) not in normalized_extracted:
                                             all_passed = False
