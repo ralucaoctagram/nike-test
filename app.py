@@ -26,18 +26,18 @@ def normalize_text(text):
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text_blocks(image_data, model):
-    """Extract all distinct blocks of text from an image."""
+    """Extract a single block of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text.split('\n')
-        return []
+            return response.text
+        return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return []
+        return ""
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -115,38 +115,34 @@ if zip_file:
                             try:
                                 with open(en_path_full, "rb") as f:
                                     en_image_data = f.read()
-                                en_ocr_text_blocks = get_ocr_text_blocks(en_image_data, model)
+                                en_ocr_text = get_ocr_text_blocks(en_image_data, model)
                             except Exception as e:
-                                en_ocr_text_blocks = []
+                                en_ocr_text = ""
                                 st.warning(f"Eroare OCR pentru {relative_path} (EN): {e}")
 
-                            if not en_ocr_text_blocks:
+                            if not en_ocr_text:
                                 st.warning(f"Niciun text nu a putut fi extras din bannerul EN ({relative_path}).")
                                 continue
                             
-                            en_text_to_row = {}
-                            for ocr_block in en_ocr_text_blocks:
-                                normalized_ocr = normalize_text(ocr_block)
-                                for normalized_excel, row in excel_texts_flat.items():
-                                    if normalized_excel in normalized_ocr:
-                                        if row.name not in [r.name for r in en_text_to_row.values()]:
-                                            en_text_to_row[ocr_block] = row
-                                        break
-                                
-                            if not en_text_to_row:
-                                st.warning(f"Niciun text din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
+                            en_text_rows = []
+                            for normalized_excel, row in excel_texts_flat.items():
+                                if normalized_excel in normalize_text(en_ocr_text):
+                                    en_text_rows.append(row)
+                            
+                            if not en_text_rows:
+                                st.warning(f"Textul din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
                                 continue
 
                             for lang in root_folders:
                                 st.markdown(f"#### Limbă: `{lang}`")
                                 
                                 lang_path_full = os.path.join(temp_dir, lang, relative_path)
-                                extracted_texts_list = []
+                                extracted_text = ""
                                 if os.path.exists(lang_path_full):
                                     try:
                                         with open(lang_path_full, "rb") as f:
                                             lang_image_data = f.read()
-                                        extracted_texts_list = get_ocr_text_blocks(lang_image_data, model)
+                                        extracted_text = get_ocr_text_blocks(lang_image_data, model)
                                     except Exception as e:
                                         st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                 else:
@@ -156,23 +152,21 @@ if zip_file:
                                 with cols[0]:
                                     st.markdown("##### Expected Text")
                                     st.markdown("---")
-                                    for row in en_text_to_row.values():
+                                    for row in en_text_rows:
                                         expected_text = str(row.get(lang.strip(), "")).strip()
                                         st.markdown(f"- `{expected_text}`")
                                 with cols[1]:
                                     st.markdown("##### Extracted Text")
                                     st.markdown("---")
-                                    if extracted_texts_list:
-                                        for line in extracted_texts_list:
-                                            st.markdown(f"- `{line.strip()}`")
+                                    if extracted_text:
+                                        st.markdown(f"- `{extracted_text.strip()}`")
                                     else:
                                         st.markdown("- N/A")
 
                                 all_passed = True
-                                normalized_extracted = [normalize_text(et) for et in extracted_texts_list]
-                                for row in en_text_to_row.values():
+                                for row in en_text_rows:
                                     expected_text = str(row.get(lang.strip(), "")).strip()
-                                    if normalize_text(expected_text) not in normalized_extracted:
+                                    if normalize_text(expected_text) not in normalize_text(extracted_text):
                                         all_passed = False
                                         break
                                 
