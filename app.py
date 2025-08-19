@@ -101,8 +101,6 @@ if zip_file:
                         
                         st.subheader("🔍 Raport Detaliat de Validare a Traducerilor")
                         
-                        all_langs = [c for c in sheets_df[next(iter(sheets_df))].columns if c.strip().lower() != 'en']
-
                         for relative_path in en_banners:
                             st.markdown(f"### Banner: `{relative_path}`")
                             
@@ -111,33 +109,39 @@ if zip_file:
                             try:
                                 with open(en_path_full, "rb") as f:
                                     en_image_data = f.read()
-                                en_text_blocks = get_ocr_text_blocks(en_image_data, model)
+                                en_text = get_ocr_text_blocks(en_image_data, model)
                             except Exception as e:
-                                en_text_blocks = []
+                                en_text = []
                                 st.warning(f"Eroare OCR pentru {relative_path} (EN): {e}")
 
-                            if not en_text_blocks:
+                            if not en_text:
                                 st.warning(f"Niciun text nu a putut fi extras din bannerul EN ({relative_path}).")
                                 continue
-                            
-                            # Caută textele EN extrase în Excel pentru a stabili sursa de adevăr
-                            expected_texts_by_lang = {lang: [] for lang in root_folders}
-                            for text_block in en_text_blocks:
+
+                            # Identifică rândurile corespondente din Excel
+                            en_text_rows = []
+                            for text_block in en_text:
                                 normalized_text = normalize_text(text_block)
                                 for df in sheets_df.values():
                                     for _, row in df.iterrows():
                                         if any(normalized_text in normalize_text(str(cell)) for cell in row):
-                                            for lang in root_folders:
-                                                expected_texts_by_lang[lang].append(str(row.get(lang, "")).strip())
+                                            if row.name not in [r.name for r in en_text_rows]: # Avoid duplicate rows
+                                                en_text_rows.append(row)
                                             break
-                                    if any(normalized_text in normalize_text(str(cell)) for cell in row): # Stop searching once row is found
+                                    if row.name in [r.name for r in en_text_rows]: # Stop searching if row is found
                                         break
-                                
+                            
+                            if not en_text_rows:
+                                st.warning(f"Textul din bannerul EN ({relative_path}) nu a fost găsit în Excel.")
+                                continue
+
+                            # Generează un raport pentru fiecare limbă
                             for lang in root_folders:
                                 st.markdown(f"#### Limbă: `{lang}`")
                                 
-                                lang_path_full = os.path.join(temp_dir, lang, relative_path)
+                                expected_texts_by_lang = [str(row.get(lang.strip(), "")).strip() for row in en_text_rows]
                                 
+                                lang_path_full = os.path.join(temp_dir, lang, relative_path)
                                 extracted_texts_list = []
                                 if os.path.exists(lang_path_full):
                                     try:
@@ -153,27 +157,21 @@ if zip_file:
                                 with cols[0]:
                                     st.markdown("##### Expected Text")
                                     st.markdown("---")
-                                    for text in expected_texts_by_lang[lang]:
+                                    for text in expected_texts_by_lang:
                                         st.markdown(f"- `{text}`")
-
                                 with cols[1]:
                                     st.markdown("##### Extracted Text")
                                     st.markdown("---")
-                                    for text in extracted_texts_list:
-                                        st.markdown(f"- `{text}`")
-                                    if not extracted_texts_list:
+                                    if extracted_texts_list:
+                                        for line in extracted_texts_list:
+                                            st.markdown(f"- `{line.strip()}`")
+                                    else:
                                         st.markdown("- N/A")
 
-                                # Verificare detaliată
+                                # Verificare logică
                                 all_passed = True
-                                for expected_text in expected_texts_by_lang[lang]:
-                                    normalized_expected = normalize_text(expected_text)
-                                    found = False
-                                    for extracted_text in extracted_texts_list:
-                                        if normalized_expected in normalize_text(extracted_text):
-                                            found = True
-                                            break
-                                    if not found:
+                                for expected_text in expected_texts_by_lang:
+                                    if normalize_text(expected_text) not in [normalize_text(et) for et in extracted_texts_list]:
                                         all_passed = False
                                         break
                                 
