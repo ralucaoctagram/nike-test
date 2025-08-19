@@ -32,12 +32,18 @@ if zip_file:
             st.success("✅ Arhiva a fost dezarhivată.")
 
         # Obținerea tuturor folderelor de la rădăcină (coduri de limbă)
+        # Am modificat această secțiune pentru a citi și folderele cu litere mari
         root_folders = [f.name for f in os.scandir(temp_dir) if f.is_dir()]
-
-        # Găsirea tuturor bannerelor din folderul 'en' ca sursă de adevăr
-        en_banners = []
-        en_path = os.path.join(temp_dir, 'en')
-        if os.path.exists(en_path):
+        
+        en_path = None
+        for folder in root_folders:
+            if folder.lower() == 'en':
+                en_path = os.path.join(temp_dir, folder)
+                break
+        
+        if en_path:
+            # Găsirea tuturor bannerelor din folderul 'en' ca sursă de adevăr
+            en_banners = []
             for root, dirs, files in os.walk(en_path):
                 for file in files:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
@@ -50,6 +56,7 @@ if zip_file:
             
             for banner_path in en_banners:
                 for lang in root_folders:
+                    # Am modificat aici pentru a verifica și folderele cu litere mari
                     full_path_lang = os.path.join(temp_dir, lang, banner_path)
                     validation_data[banner_path][lang] = "✅ Găsit" if os.path.exists(full_path_lang) else "❌ Lipsește"
             
