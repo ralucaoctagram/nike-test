@@ -26,7 +26,7 @@ def normalize_text(text):
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text_blocks(image_data, model):
-    """Extract all distinct blocks of text from an image."""
+    """Extract a single block of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
@@ -129,8 +129,8 @@ if zip_file:
                                 for lang in root_folders:
                                     st.markdown(f"#### Limbă: `{lang}`")
                                     
-                                    # Use the correct column name for the language
-                                    lang_col_name = excel_df_raw.iloc[0].get(lang.strip())
+                                    # Use the correct column name for the language from the header row (index 0)
+                                    lang_col_name = excel_df_raw.iloc[0].get(excel_df_raw.columns[root_folders.index(lang)])
                                     expected_texts_by_lang = [str(row.get(lang_col_name, "")).strip() for _, row in en_text_rows.iterrows()]
                                     
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
@@ -140,7 +140,7 @@ if zip_file:
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_text = get_ocr_text(lang_image_data, model)
+                                            extracted_text = get_ocr_text_blocks(lang_image_data, model)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
@@ -155,4 +155,28 @@ if zip_file:
                                     with cols[1]:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
-                                        if extracted_text
+                                        if extracted_text:
+                                            for line in extracted_text:
+                                                st.markdown(f"- `{line.strip()}`")
+                                        else:
+                                            st.markdown("- N/A")
+
+                                    all_passed = True
+                                    normalized_extracted = [normalize_text(et) for et in extracted_text]
+                                    for expected_text in expected_texts_by_lang:
+                                        if normalize_text(expected_text) not in normalized_extracted:
+                                            all_passed = False
+                                            break
+                                    
+                                    if all_passed:
+                                        st.success("✅ Toate textele corespund!")
+                                    else:
+                                        st.error("❌ Există nepotriviri!")
+
+                                    st.markdown("---")
+                else:
+                    st.info("Te rog să încarci fișierul Excel și să introduci cheia API pentru a începe validarea.")
+            else:
+                st.info("Te rog să introduci numerele de rând pentru toate bannerele EN pentru a activa butonul de validare.")
+        else:
+            st.error("Folderul 'en' (limba engleză) nu a fost găsit în arhivă.")
