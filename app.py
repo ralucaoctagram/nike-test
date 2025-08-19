@@ -23,11 +23,10 @@ def normalize_text(text):
     """Normalize text for a more flexible comparison."""
     if not isinstance(text, str):
         return ""
-    # Replace newlines and extra spaces with a single space
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text_blocks(image_data, model):
-    """Extract a single block of text from an image."""
+    """Extract all distinct blocks of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
