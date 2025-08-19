@@ -32,8 +32,8 @@ if zip_file:
             st.success("✅ Arhiva a fost dezarhivată.")
 
         # Obținerea tuturor folderelor de la rădăcină (coduri de limbă)
-        # Am modificat această secțiune pentru a citi și folderele cu litere mari
-        root_folders = [f.name for f in os.scandir(temp_dir) if f.is_dir()]
+        # Ignoră folderele __MACOSX
+        root_folders = [f.name for f in os.scandir(temp_dir) if f.is_dir() and f.name != '__MACOSX']
         
         en_path = None
         for folder in root_folders:
@@ -45,6 +45,10 @@ if zip_file:
             # Găsirea tuturor bannerelor din folderul 'en' ca sursă de adevăr
             en_banners = []
             for root, dirs, files in os.walk(en_path):
+                # Omiterea directorului __MACOSX
+                if '__MACOSX' in dirs:
+                    dirs.remove('__MACOSX')
+                
                 for file in files:
                     if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif')):
                         relative_path = os.path.relpath(os.path.join(root, file), en_path)
@@ -56,7 +60,6 @@ if zip_file:
             
             for banner_path in en_banners:
                 for lang in root_folders:
-                    # Am modificat aici pentru a verifica și folderele cu litere mari
                     full_path_lang = os.path.join(temp_dir, lang, banner_path)
                     validation_data[banner_path][lang] = "✅ Găsit" if os.path.exists(full_path_lang) else "❌ Lipsește"
             
