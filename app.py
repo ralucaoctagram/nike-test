@@ -28,13 +28,13 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text(image_data, model, lang_code):
+def get_ocr_text(image_data, model):
     """
-    Extracts text from an image by using a detailed prompt and specifying the language.
+    Extracts text from an image by using a detailed prompt.
     """
     try:
-        # Prompt-ul actualizat pentru a include instrucțiuni specifice pentru limbă
-        prompt = f"Extract all visible text from this marketing banner image. The text is in {lang_code}. Group text elements logically. Separate each distinct group (e.g., a headline, a sub-headline, a call-to-action button, or fine print) with a new line. Maintain the original reading order from top to bottom. Do not include any explanations, just the extracted text."
+        # Păstrăm prompt-ul detaliat pentru a maximiza șansele de succes
+        prompt = "Extract all visible text from this marketing banner image. Group text elements logically. Separate each distinct group (e.g., a headline, a sub-headline, a call-to-action button, or fine print) with a new line. Maintain the original reading order from top to bottom. Do not include any explanations, just the extracted text."
         
         response = model.generate_content([
             prompt,
@@ -47,6 +47,27 @@ def get_ocr_text(image_data, model, lang_code):
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
         return ""
+
+def post_process_ocr_text(text, expected_texts):
+    """
+    Processes the extracted text to format it correctly based on expected translations.
+    This function breaks the text into lines based on keywords from the Excel file.
+    """
+    if not text:
+        return ""
+    
+    # Creați o listă de cuvinte-cheie din textele așteptate
+    keywords = [normalize_text(t) for t in expected_texts if t]
+    
+    processed_text = text.replace('\n', ' ')  # Scoatem new-line-urile existente
+    
+    # Împărțim textul pe baza cuvintelor-cheie
+    for keyword in keywords:
+        if keyword in normalize_text(processed_text):
+            processed_text = processed_text.replace(keyword, f"\n{keyword}")
+            
+    # Curățăm textul rezultat pentru a elimina spațiile multiple
+    return "\n".join([line.strip() for line in processed_text.split('\n') if line.strip()])
 
 def get_text_preview(row_numbers_str, excel_df_raw):
     """Generates a text preview for the given row numbers."""
@@ -188,8 +209,13 @@ if zip_file:
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            # Trimite codul de limbă către funcția OCR
-                                            extracted_text = get_ocr_text(lang_image_data, model, lang)
+                                            
+                                            # Folosește Gemini pentru a extrage textul brut
+                                            raw_extracted_text = get_ocr_text(lang_image_data, model)
+                                            
+                                            # Folosește funcția de post-procesare pentru a formata textul
+                                            extracted_text = post_process_ocr_text(raw_extracted_text, expected_texts_by_lang)
+                                            
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
