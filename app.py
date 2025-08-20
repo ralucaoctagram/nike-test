@@ -30,11 +30,11 @@ def normalize_text(text):
 
 def get_ocr_text(image_data, model):
     """
-    Extracts text from an image by instructing the model to return it as a list.
+    Extracts text from an image by using a detailed prompt to instruct the model.
     """
     try:
-        # Prompt-ul actualizat pentru a cere o listă formatată cu marcatori
-        prompt = "Extract all visible text from this marketing banner image. Present each distinct text element or line of text as a list item, prefixed with a hyphen and a space (- ). Preserve the order from top to bottom. Do not include any explanations or extra text, just the list."
+        # Noul prompt care se concentrează pe gruparea logică a textului
+        prompt = "Extract all visible text from this marketing banner image. Group text elements logically. Separate each distinct group (e.g., a headline, a sub-headline, a call-to-action button, or fine print) with a new line. Maintain the original reading order from top to bottom. Do not include any explanations, just the extracted text."
         
         response = model.generate_content([
             prompt,
