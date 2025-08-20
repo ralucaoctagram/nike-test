@@ -148,7 +148,7 @@ if zip_file:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
                                         st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-                                
+
                                     cols = st.columns(2)
                                     with cols[0]:
                                         st.markdown("##### Expected Text (from Excel)")
