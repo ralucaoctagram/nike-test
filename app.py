@@ -28,13 +28,13 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text(image_data, model):
+def get_ocr_text(image_data, model, lang_code):
     """
-    Extracts text from an image by using a detailed prompt to instruct the model.
+    Extracts text from an image by using a detailed prompt and specifying the language.
     """
     try:
-        # Noul prompt care se concentrează pe gruparea logică a textului
-        prompt = "Extract all visible text from this marketing banner image. Group text elements logically. Separate each distinct group (e.g., a headline, a sub-headline, a call-to-action button, or fine print) with a new line. Maintain the original reading order from top to bottom. Do not include any explanations, just the extracted text."
+        # Prompt-ul actualizat pentru a include instrucțiuni specifice pentru limbă
+        prompt = f"Extract all visible text from this marketing banner image. The text is in {lang_code}. Group text elements logically. Separate each distinct group (e.g., a headline, a sub-headline, a call-to-action button, or fine print) with a new line. Maintain the original reading order from top to bottom. Do not include any explanations, just the extracted text."
         
         response = model.generate_content([
             prompt,
@@ -188,7 +188,8 @@ if zip_file:
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_text = get_ocr_text(lang_image_data, model)
+                                            # Trimite codul de limbă către funcția OCR
+                                            extracted_text = get_ocr_text(lang_image_data, model, lang)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
