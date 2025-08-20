@@ -43,6 +43,23 @@ def get_ocr_text(image_data, model):
         st.warning(f"Eroare OCR: {e}")
         return ""
 
+# New function to get text preview from a list of row numbers
+def get_text_preview(row_numbers_str, excel_df_raw):
+    """Generates a text preview for the given row numbers."""
+    preview_text = ""
+    if row_numbers_str:
+        try:
+            row_indices = [int(n) - 1 for n in row_numbers_str.split('\n') if n.strip().isdigit()]
+            for index in row_indices:
+                if 0 <= index < len(excel_df_raw):
+                    row_data = excel_df_raw.iloc[index].to_string(header=False)
+                    preview_text += f"Linia {index + 1}: {row_data}\n"
+                else:
+                    preview_text += f"Linia {index + 1}: ❌ Rând invalid\n"
+        except (ValueError, IndexError):
+            preview_text = "Eroare la procesarea rândurilor. Te rog introdu doar numere."
+    return preview_text
+
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
 
@@ -86,7 +103,7 @@ if zip_file:
             st.markdown("---")
             st.subheader("⚡ Validare Traduceri Manuală")
             if excel_file:
-                st.info("Te rog să introduci numerele de rând din Excel care corespund textelor de pe fiecare banner EN.")
+                st.info("Te rog să introduci numerele de rând din Excel, câte unul pe fiecare rând, care corespund textelor de pe fiecare banner EN.")
                 
                 try:
                     excel_df_raw = pd.read_excel(excel_file, header=None, dtype=str).fillna('')
@@ -103,8 +120,30 @@ if zip_file:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
                     st.image(en_full_path, width=200)
-                    st.session_state.user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", value=st.session_state.user_inputs.get(relative_path, ""), key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
-                
+                    
+                    # Use st.text_area for multiline input
+                    # Also use a callback function to trigger a rerun when the input changes
+                    user_input_key = f"input_{relative_path}"
+                    
+                    # Get the current value from session_state
+                    current_value = st.session_state.user_inputs.get(relative_path, "")
+                    
+                    # Update the session state only if the text area changes
+                    new_value = st.text_area(
+                        "Introdu numerele de rând din Excel (câte unul pe rând):", 
+                        value=current_value, 
+                        key=user_input_key, 
+                        placeholder="ex:\n2\n5\n8"
+                    )
+                    
+                    # Store the new value in session state
+                    st.session_state.user_inputs[relative_path] = new_value
+
+                    # Display real-time preview of selected rows
+                    preview_text = get_text_preview(new_value, excel_df_raw)
+                    st.text(f"Preview texte:\n{preview_text}")
+
+
                 all_inputs_filled = all(input_text.strip() for input_text in st.session_state.user_inputs.values())
                 if excel_file and api_key and all_inputs_filled:
                     if st.button("🚀 Validează traducerile"):
@@ -124,7 +163,7 @@ if zip_file:
                                 row_numbers_str = st.session_state.user_inputs.get(relative_path, "")
                                 
                                 try:
-                                    row_indices = [int(n) - 1 for n in row_numbers_str.split(',')]
+                                    row_indices = [int(n) - 1 for n in row_numbers_str.split('\n') if n.strip().isdigit()]
                                     en_text_rows = excel_df_raw.iloc[row_indices]
                                 except Exception as e:
                                     st.error(f"Eroare la citirea rândurilor din Excel: {e}")
@@ -133,8 +172,20 @@ if zip_file:
                                 for lang in root_folders:
                                     st.markdown(f"#### Limbă: `{lang}`")
                                     
-                                    lang_col_name = excel_df_raw.iloc[0].get(lang.strip())
-                                    expected_texts_by_lang = [str(row.get(lang_col_name, "")).strip() for _, row in en_text_rows.iterrows()]
+                                    # Find the language column based on the language folder name
+                                    # We need to find the column index where the header matches the language code
+                                    lang_col_index = -1
+                                    first_row = excel_df_raw.iloc[0]
+                                    for i, cell_value in enumerate(first_row):
+                                        if isinstance(cell_value, str) and cell_value.strip().lower() == lang.lower():
+                                            lang_col_index = i
+                                            break
+
+                                    if lang_col_index == -1:
+                                        st.warning(f"Coloana pentru limba '{lang}' nu a fost găsită în rândul de antet al fișierului Excel.")
+                                        continue
+
+                                    expected_texts_by_lang = [str(excel_df_raw.iloc[idx, lang_col_index]).strip() for idx in row_indices]
                                     
                                     lang_path_full = os.path.join(temp_dir, lang, relative_path)
                                     extracted_text = ""
@@ -151,12 +202,12 @@ if zip_file:
 
                                     cols = st.columns(2)
                                     with cols[0]:
-                                        st.markdown("##### Expected Text (from Excel)")
+                                        st.markdown("##### Text așteptat (din Excel)")
                                         st.markdown("---")
                                         for text in expected_texts_by_lang:
                                             st.markdown(f"- `{text}`")
                                     with cols[1]:
-                                        st.markdown("##### Extracted Text (from Banner)")
+                                        st.markdown("##### Text extras (din Banner)")
                                         st.markdown("---")
                                         if extracted_text:
                                             st.write(extracted_text.strip())
