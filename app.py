@@ -210,10 +210,8 @@ if zip_file:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
                                             
-                                            # Folosește Gemini pentru a extrage textul brut
                                             raw_extracted_text = get_ocr_text(lang_image_data, model)
                                             
-                                            # Folosește funcția de post-procesare pentru a formata textul
                                             extracted_text = post_process_ocr_text(raw_extracted_text, expected_texts_by_lang)
                                             
                                         except Exception as e:
