@@ -30,18 +30,19 @@ def normalize_text(text):
 
 def get_ocr_text(image_data, model):
     """
-    Extracts text from an image by explicitly instructing the model to return
-    each text line or block on a new line.
+    Extracts text from an image by using a detailed prompt to instruct the model.
     """
     try:
+        # Utilizează prompt-ul detaliat din codul tău TS pentru a garanta rezultate similare
+        prompt = "Extract all visible text from this marketing banner image. Return all text content you can see, preserving the order from top to bottom or most prominent to least prominent. If there are multiple text elements (like headlines, subtext, call-to-action buttons), separate each distinct text element with ' | ' (space-pipe-space). Focus on all readable marketing text, headlines, product names, and call-to-action text. Include ALL text lines no matter how many there are. Do not include any explanations, just the extracted text."
+        
         response = model.generate_content([
-            "Extract all text from this image. Return each distinct text element or line of text on a new, separate line. Do not combine different text elements into a single paragraph. For example, if the banner has a headline, a sub-headline, and a call-to-action, each of these should be on a new line.",
+            prompt,
             {"mime_type": "image/jpeg", "data": image_data}
         ])
+        
         if response.text:
-            # Split the text by lines to ensure separation
-            lines = [line.strip() for line in response.text.split('\n') if line.strip()]
-            return "\n".join(lines)
+            return response.text
         return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
@@ -145,7 +146,6 @@ if zip_file:
                         with st.spinner('Validating translations...'):
                             try:
                                 genai.configure(api_key=api_key)
-                                # Use the specific model identified in the other app
                                 model = genai.GenerativeModel('gemini-1.5-flash')
                             except Exception as e:
                                 st.error(f"Eroare la configurarea Gemini API: {e}. Verifică cheia API.")
