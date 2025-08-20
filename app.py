@@ -14,10 +14,6 @@ st.write(
     "Încarcă arhiva cu bannere și fișierul Excel pentru a valida structura, dimensiunile și traducerile."
 )
 
-# Initialize session state for user inputs
-if 'user_inputs' not in st.session_state:
-    st.session_state.user_inputs = {}
-
 # --- Pasul 1: Încărcare fișiere ---
 api_key = st.text_input("🔑 Introdu Cheia API Gemini:", type="password")
 excel_file = st.file_uploader("📑 Încarcă fișierul Excel cu traducerile", type=["xlsx"])
@@ -29,19 +25,19 @@ def normalize_text(text):
         return ""
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def get_ocr_text_blocks(image_data, model):
-    """Extract a single block of text from an image."""
+def get_ocr_text(image_data, model):
+    """Extracts a single block of text from an image."""
     try:
         response = model.generate_content([
             "Extract all text from the image, preserving the original line breaks.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text.split('\n')
-        return []
+            return response.text
+        return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
-        return []
+        return ""
 
 if zip_file:
     st.success("✅ Arhiva ZIP cu bannere a fost încărcată cu succes!")
@@ -98,13 +94,14 @@ if zip_file:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
                     st.stop()
                 
+                user_inputs = {}
                 for relative_path in en_banners:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
                     st.image(en_full_path, width=200)
-                    st.session_state.user_inputs[relative_path] = st.text_area(f"Introdu numerele de rând din Excel (câte unul pe linie):", value=st.session_state.user_inputs.get(relative_path, ""), key=f"input_{relative_path}", placeholder="ex: \n2\n5\n8")
+                    user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
                 
-                all_inputs_filled = all(input_text.strip() for input_text in st.session_state.user_inputs.values())
+                all_inputs_filled = all(input_text.strip() for input_text in user_inputs.values())
                 if excel_file and api_key and all_inputs_filled:
                     if st.button("🚀 Validează traducerile"):
                         with st.spinner('Validating translations...'):
@@ -120,10 +117,10 @@ if zip_file:
                             for relative_path in en_banners:
                                 st.markdown(f"### Banner: `{relative_path}`")
                                 
-                                row_numbers_str = st.session_state.user_inputs.get(relative_path, "")
+                                row_numbers_str = user_inputs.get(relative_path, "")
                                 
                                 try:
-                                    row_indices = [int(n) - 1 for n in row_numbers_str.split()]
+                                    row_indices = [int(n) - 1 for n in row_numbers_str.split(',')]
                                     en_text_rows = excel_df_raw.iloc[row_indices]
                                 except Exception as e:
                                     st.error(f"Eroare la citirea rândurilor din Excel: {e}")
