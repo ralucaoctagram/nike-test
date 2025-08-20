@@ -99,7 +99,7 @@ if zip_file:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
                     st.image(en_full_path, width=200)
-                    user_inputs[relative_path] = st.text_area(f"Introdu numerele de rând din Excel (câte unul pe linie):", key=f"input_{relative_path}", placeholder="ex: \n2\n5\n8")
+                    user_inputs[relative_path] = st.text_input(f"Introdu numerele de rând din Excel (separate prin virgulă):", key=f"input_{relative_path}", placeholder="ex: 2, 5, 8")
                 
                 all_inputs_filled = all(input_text.strip() for input_text in user_inputs.values())
                 if excel_file and api_key and all_inputs_filled:
@@ -120,7 +120,7 @@ if zip_file:
                                 row_numbers_str = user_inputs.get(relative_path, "")
                                 
                                 try:
-                                    row_indices = [int(n) - 1 for n in row_numbers_str.split()]
+                                    row_indices = [int(n) - 1 for n in row_numbers_str.split(',')]
                                     en_text_rows = excel_df_raw.iloc[row_indices]
                                 except Exception as e:
                                     st.error(f"Eroare la citirea rândurilor din Excel: {e}")
@@ -139,12 +139,12 @@ if zip_file:
                                         try:
                                             with open(lang_path_full, "rb") as f:
                                                 lang_image_data = f.read()
-                                            extracted_text = get_ocr_text_blocks(lang_image_data, model)
+                                            extracted_text = get_ocr_text(lang_image_data, model)
                                         except Exception as e:
                                             st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
                                     else:
                                         st.warning(f"Fișierul ({lang}) nu a fost găsit.")
-                                
+
                                     cols = st.columns(2)
                                     with cols[0]:
                                         st.markdown("##### Expected Text (from Excel)")
@@ -155,15 +155,13 @@ if zip_file:
                                         st.markdown("##### Extracted Text (from Banner)")
                                         st.markdown("---")
                                         if extracted_text:
-                                            for line in extracted_text:
-                                                st.markdown(f"- `{line.strip()}`")
+                                            st.write(extracted_text.strip())
                                         else:
-                                            st.markdown("- N/A")
+                                            st.write("N/A")
 
                                     all_passed = True
-                                    normalized_extracted = [normalize_text(et) for et in extracted_text]
                                     for expected_text in expected_texts_by_lang:
-                                        if normalize_text(expected_text) not in normalized_extracted:
+                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
                                             all_passed = False
                                             break
                                     
