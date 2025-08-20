@@ -29,14 +29,19 @@ def normalize_text(text):
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def get_ocr_text(image_data, model):
-    """Extracts a single block of text from an image."""
+    """
+    Extracts text from an image by explicitly instructing the model to return
+    each text line or block on a new line.
+    """
     try:
         response = model.generate_content([
-            "Extract all text from the image. Each distinct line or block of text should be on a new line.",
+            "Extract all text from this image. Return each distinct text element or line of text on a new, separate line. Do not combine different text elements into a single paragraph. For example, if the banner has a headline, a sub-headline, and a call-to-action, each of these should be on a new line.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
-            return response.text
+            # Split the text by lines to ensure separation
+            lines = [line.strip() for line in response.text.split('\n') if line.strip()]
+            return "\n".join(lines)
         return ""
     except Exception as e:
         st.warning(f"Eroare OCR: {e}")
@@ -140,7 +145,8 @@ if zip_file:
                         with st.spinner('Validating translations...'):
                             try:
                                 genai.configure(api_key=api_key)
-                                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                                # Use the specific model identified in the other app
+                                model = genai.GenerativeModel('gemini-1.5-flash')
                             except Exception as e:
                                 st.error(f"Eroare la configurarea Gemini API: {e}. Verifică cheia API.")
                                 st.stop()
