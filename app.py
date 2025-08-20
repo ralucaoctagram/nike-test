@@ -3,7 +3,6 @@ import pandas as pd
 import zipfile
 import os
 from PIL import Image
-from io import BytesIO
 import re
 import tempfile
 import google.generativeai as genai
@@ -51,8 +50,8 @@ def get_text_preview(row_numbers_str, excel_df_raw):
             row_indices = [int(n) - 1 for n in row_numbers_str.split('\n') if n.strip().isdigit()]
             for index in row_indices:
                 if 0 <= index < len(excel_df_raw):
-                    row_data = " | ".join(excel_df_raw.iloc[index].astype(str).tolist())
-                    preview_text += f"Linia {index + 1}: {row_data}\n"
+                    row_data_list = [str(cell) for cell in excel_df_raw.iloc[index].tolist()]
+                    preview_text += f"Linia {index + 1}: {' | '.join(row_data_list)}\n"
                 else:
                     preview_text += f"Linia {index + 1}: ❌ Rând invalid\n"
         except (ValueError, IndexError):
@@ -97,3 +96,129 @@ if zip_file:
                         match = re.search(r"(\d+)x(\d+)", relative_path)
                         declared_size_1x = f"{match.group(1)}x{match.group(2)}" if match else "N/A"
                         size_results.append({"Limbă": lang, "Cale Banner": relative_path, "Dimensiune Declarată (1x)": declared_size_1x, "Dimensiune Așteptată": f"{expected_size[0]}x{expected_size[1]}", "Dimensiune Reală": f"{actual_size[0]}x{actual_size[1]}", "Status": status})
+            st.dataframe(pd.DataFrame(size_results))
+            
+            st.markdown("---")
+            st.subheader("⚡ Validare Traduceri Manuală")
+            if excel_file:
+                st.info("Te rog să introduci numerele de rând din Excel, câte unul pe fiecare rând, care corespund textelor de pe fiecare banner EN.")
+                
+                try:
+                    # Keep dtype=str to prevent conversion of percentages or other values
+                    excel_df_raw = pd.read_excel(excel_file, header=None, dtype=str).fillna('')
+                    st.write("### Preview Excel (rândurile sunt numerotate de la 1)")
+                    df_display = excel_df_raw.copy()
+                    df_display.index += 1
+                    st.dataframe(df_display.reset_index().rename(columns={'index': 'Linia'}))
+                except Exception as e:
+                    st.error(f"Eroare la citirea fișierului Excel: {e}")
+                    st.stop()
+                
+                # Use session_state to retain inputs
+                for relative_path in en_banners:
+                    en_full_path = os.path.join(en_path, relative_path)
+                    st.markdown(f"**Banner:** `{relative_path}`")
+                    st.image(en_full_path, width=200)
+                    
+                    user_input_key = f"input_{relative_path}"
+                    
+                    current_value = st.session_state.user_inputs.get(relative_path, "")
+                    
+                    new_value = st.text_area(
+                        "Introdu numerele de rând din Excel (câte unul pe rând):", 
+                        value=current_value, 
+                        key=user_input_key, 
+                        placeholder="ex:\n2\n5\n8"
+                    )
+                    
+                    st.session_state.user_inputs[relative_path] = new_value
+
+                    preview_text = get_text_preview(new_value, excel_df_raw)
+                    st.text(f"Preview texte:\n{preview_text}")
+
+                all_inputs_filled = all(input_text.strip() for input_text in st.session_state.user_inputs.values())
+                if excel_file and api_key and all_inputs_filled:
+                    if st.button("🚀 Validează traducerile"):
+                        with st.spinner('Validating translations...'):
+                            try:
+                                genai.configure(api_key=api_key)
+                                model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                            except Exception as e:
+                                st.error(f"Eroare la configurarea Gemini API: {e}. Verifică cheia API.")
+                                st.stop()
+
+                            st.subheader("🔍 Raport Detaliat de Validare a Traducerilor")
+                            
+                            for relative_path in en_banners:
+                                st.markdown(f"### Banner: `{relative_path}`")
+                                
+                                row_numbers_str = st.session_state.user_inputs.get(relative_path, "")
+                                
+                                try:
+                                    row_indices = [int(n) - 1 for n in row_numbers_str.split('\n') if n.strip().isdigit()]
+                                    en_text_rows = excel_df_raw.iloc[row_indices]
+                                except Exception as e:
+                                    st.error(f"Eroare la citirea rândurilor din Excel: {e}")
+                                    continue
+                                
+                                for lang in root_folders:
+                                    st.markdown(f"#### Limbă: `{lang}`")
+                                    
+                                    lang_col_index = -1
+                                    first_row = excel_df_raw.iloc[0]
+                                    for i, cell_value in enumerate(first_row):
+                                        if isinstance(cell_value, str) and cell_value.strip().lower() == lang.lower():
+                                            lang_col_index = i
+                                            break
+
+                                    if lang_col_index == -1:
+                                        st.warning(f"Coloana pentru limba '{lang}' nu a fost găsită în rândul de antet al fișierului Excel.")
+                                        continue
+
+                                    expected_texts_by_lang = [str(excel_df_raw.iloc[idx, lang_col_index]).strip() for idx in row_indices]
+                                    
+                                    lang_path_full = os.path.join(temp_dir, lang, relative_path)
+                                    extracted_text = ""
+                                    if os.path.exists(lang_path_full):
+                                        st.image(lang_path_full, width=200)
+                                        try:
+                                            with open(lang_path_full, "rb") as f:
+                                                lang_image_data = f.read()
+                                            extracted_text = get_ocr_text(lang_image_data, model)
+                                        except Exception as e:
+                                            st.warning(f"Eroare OCR pentru {relative_path} ({lang}): {e}")
+                                    else:
+                                        st.warning(f"Fișierul ({lang}) nu a fost găsit.")
+
+                                    cols = st.columns(2)
+                                    with cols[0]:
+                                        st.markdown("##### Text așteptat (din Excel)")
+                                        st.markdown("---")
+                                        for text in expected_texts_by_lang:
+                                            st.markdown(f"- `{text}`")
+                                    with cols[1]:
+                                        st.markdown("##### Text extras (din Banner)")
+                                        st.markdown("---")
+                                        if extracted_text:
+                                            st.write(extracted_text.strip())
+                                        else:
+                                            st.write("N/A")
+
+                                    all_passed = True
+                                    for expected_text in expected_texts_by_lang:
+                                        if normalize_text(expected_text) not in normalize_text(extracted_text):
+                                            all_passed = False
+                                            break
+                                    
+                                    if all_passed:
+                                        st.success("✅ Toate textele corespund!")
+                                    else:
+                                        st.error("❌ Există nepotriviri!")
+
+                                    st.markdown("---")
+                else:
+                    st.info("Te rog să încarci fișierul Excel și să introduci cheia API pentru a începe validarea.")
+            else:
+                st.info("Te rog să introduci numerele de rând pentru toate bannerele EN pentru a activa butonul de validare.")
+        else:
+            st.error("Folderul 'en' (limba engleză) nu a fost găsit în arhivă.")
