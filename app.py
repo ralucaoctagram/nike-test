@@ -32,7 +32,7 @@ def get_ocr_text(image_data, model):
     """Extracts a single block of text from an image."""
     try:
         response = model.generate_content([
-            "Extract all text from the image, preserving the original line breaks.",
+            "Extract all text from the image. Each distinct line or block of text should be on a new line.",
             {"mime_type": "image/jpeg", "data": image_data}
         ])
         if response.text:
@@ -104,7 +104,6 @@ if zip_file:
                 st.info("Te rog să introduci numerele de rând din Excel, câte unul pe fiecare rând, care corespund textelor de pe fiecare banner EN.")
                 
                 try:
-                    # Keep dtype=str to prevent conversion of percentages or other values
                     excel_df_raw = pd.read_excel(excel_file, header=None, dtype=str).fillna('')
                     st.write("### Preview Excel (rândurile sunt numerotate de la 1)")
                     df_display = excel_df_raw.copy()
@@ -114,7 +113,6 @@ if zip_file:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
                     st.stop()
                 
-                # Use session_state to retain inputs
                 for relative_path in en_banners:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
