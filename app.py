@@ -98,6 +98,7 @@ if zip_file:
                     st.error(f"Eroare la citirea fișierului Excel: {e}")
                     st.stop()
                 
+                # Use session_state to retain inputs
                 for relative_path in en_banners:
                     en_full_path = os.path.join(en_path, relative_path)
                     st.markdown(f"**Banner:** `{relative_path}`")
