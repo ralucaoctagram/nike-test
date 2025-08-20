@@ -14,8 +14,8 @@ st.write(
 )
 
 # Initialize session state for user inputs
-if 'user_inputs' not in st.session_state:
-    st.session_state.user_inputs = {}
+if 'user_inputs' not in st.st.session_state:
+    st.st.session_state.user_inputs = {}
 
 # --- Pasul 1: Încărcare fișiere ---
 api_key = st.text_input("🔑 Introdu Cheia API Gemini:", type="password")
@@ -30,10 +30,10 @@ def normalize_text(text):
 
 def get_ocr_text(image_data, model):
     """
-    Extracts text from an image by using a detailed prompt.
+    Extrage textul brut din imagine folosind Gemini.
     """
     try:
-        # Păstrăm prompt-ul detaliat pentru a maximiza șansele de succes
+        # Păstrăm promptul detaliat pentru a maximiza șansele de succes
         prompt = "Extract all visible text from this marketing banner image. Group text elements logically. Separate each distinct group (e.g., a headline, a sub-headline, a call-to-action button, or fine print) with a new line. Maintain the original reading order from top to bottom. Do not include any explanations, just the extracted text."
         
         response = model.generate_content([
@@ -50,8 +50,8 @@ def get_ocr_text(image_data, model):
 
 def post_process_ocr_text(text, expected_texts):
     """
-    Processes the extracted text to format it correctly based on expected translations.
-    This function breaks the text into lines based on keywords from the Excel file.
+    Procesează textul extras pentru a-l formata corect pe baza traducerilor așteptate.
+    Această funcție împarte textul în linii bazate pe cuvintele-cheie din fișierul Excel.
     """
     if not text:
         return ""
@@ -59,7 +59,8 @@ def post_process_ocr_text(text, expected_texts):
     # Creați o listă de cuvinte-cheie din textele așteptate
     keywords = [normalize_text(t) for t in expected_texts if t]
     
-    processed_text = text.replace('\n', ' ')  # Scoatem new-line-urile existente
+    # Normalizăm textul extras pentru procesare
+    processed_text = text.replace('\n', ' ')
     
     # Împărțim textul pe baza cuvintelor-cheie
     for keyword in keywords:
